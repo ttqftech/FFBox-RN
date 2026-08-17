@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { testConnect } from '../bridges/minConnect';
-import { setCurrentConnect } from '../bridges/session';
+import { appStore } from '../stores/appStore';
 import { getServersInfo, saveServersInfo, ServerInfo } from '../common/storage';
 
 /** 与某个服务器信息是否同一条（忽略密码） */
@@ -47,16 +46,10 @@ export default function LoginScreen() {
       return;
     }
     setConnecting(true);
+    // 通过 appStore 建立服务器连接（步骤 2 取代步骤 1 的 minConnect）
+    const serverId = appStore.addServer();
     try {
-      const handle = await testConnect(ip, port, username, password, {
-        onDisconnect: () => {
-          // Alert.alert('掉线', '与服务器的连接已断开，请重试');
-          // router.replace('/');
-          setCurrentConnect(null);
-          console.log('掉线');
-        },
-      });
-      setCurrentConnect(handle);
+      await appStore.initializeServer(serverId, ip, Number(port), username, password);
 
       // 更新最近使用列表（同一条则更新密码，否则追加）
       const list = await getServersInfo();
@@ -69,6 +62,7 @@ export default function LoginScreen() {
 
       router.replace('/main');
     } catch (e: any) {
+      appStore.removeServer(serverId);
       Alert.alert('连接失败', e?.message || '未知错误');
     } finally {
       setConnecting(false);
@@ -77,7 +71,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <View style={styles.form}>
           <Text style={styles.title}>连接服务器</Text>
 
@@ -92,28 +86,28 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>{connecting ? '连接中…' : '连接'}</Text>
           </TouchableOpacity>
         </View>
-
-        <View style={styles.recentArea}>
-          <Text style={styles.sectionTitle}>最近使用</Text>
-          <FlatList
-            data={recent}
-            keyExtractor={(item, i) => `${item.ip}:${item.port}:${item.username}:${i}`}
-            renderItem={({ item }) => (
-              <View style={styles.recentRow}>
-                <Pressable style={styles.recentMain} onPress={() => fillFromRecent(item)}>
-                  <Text style={styles.recentText} numberOfLines={1}>
-                    {item.ip}:{item.port}{item.username ? `@${item.username}` : ''}
-                  </Text>
-                </Pressable>
-                <TouchableOpacity onPress={() => removeRecent(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={styles.removeText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            ListEmptyComponent={<Text style={styles.emptyText}>暂无历史记录</Text>}
-          />
-        </View>
       </KeyboardAvoidingView>
+
+      <View style={styles.recentArea}>
+        <Text style={styles.sectionTitle}>最近使用</Text>
+        <FlatList
+          data={recent}
+          keyExtractor={(item, i) => `${item.ip}:${item.port}:${item.username}:${i}`}
+          renderItem={({ item }) => (
+            <View style={styles.recentRow}>
+              <Pressable style={styles.recentMain} onPress={() => fillFromRecent(item)}>
+                <Text style={styles.recentText} numberOfLines={1}>
+                  {item.ip}:{item.port}{item.username ? `@${item.username}` : ''}
+                </Text>
+              </Pressable>
+              <TouchableOpacity onPress={() => removeRecent(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.removeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          ListEmptyComponent={<Text style={styles.emptyText}>暂无历史记录</Text>}
+        />
+      </View>
     </SafeAreaView>
   );
 }
