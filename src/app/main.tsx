@@ -1,114 +1,113 @@
-import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+// 移植自 FFBox `MainArea.vue` + `ListArea.vue`，移动端主界面。
+// 集成 HeaderBar、TaskItem、MoreMenu、DisconnectPanel。
+// 队列总进度已移至 HeaderBar 标题栏（FFBox - 100%），画面底部不再有进度 footer。
+import { useCallback, useState } from 'react';
+import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useSnapshot } from 'valtio';
 import { appStore } from '../stores/appStore';
 import { ServiceBridgeStatus } from '../bridges/serviceBridge';
+import { HeaderBar } from '../components/HeaderBar';
+import { TaskItem } from '../components/TaskItem';
+import { MoreMenu } from '../components/MoreMenu';
+import { DisconnectPanel } from '../components/DisconnectPanel';
+import { DropFilesIcon } from '../components/DropFilesIcon';
+import { UITask } from '../types';
+import { colors } from '../common/theme';
 
-/** 主界面任务列表（步骤 2 最简版）：显示任务标题 + 进度 */
 export default function MainScreen() {
-  const router = useRouter();
-  const snap = useSnapshot(appStore);
-  const server = snap.currentServer;
-  const tasks = server?.data.tasks ?? [];
-  const progress = server?.data.progress ?? -1;
+	const router = useRouter();
+	const snap = useSnapshot(appStore);
+	const server = snap.currentServer;
+	const connected = server?.entity.status === ServiceBridgeStatus.Connected;
+	const disconnected = !connected && (
+		server?.entity.status === ServiceBridgeStatus.Disconnected ||
+		server?.entity.status === ServiceBridgeStatus.Reconnecting
+	);
+	const tasks = (server?.data.tasks ?? []) as UITask[];
+	const [menuVisible, setMenuVisible] = useState(false);
 
-  const handleDisconnect = () => {
-    if (server) appStore.removeServer(server.data.id);
-    router.replace('/');
-  };
+	const handleLogout = useCallback(() => {
+		if (server) appStore.removeServer(server.data.id);
+		setMenuVisible(false);
+		router.replace('/');
+	}, [server, router]);
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.ipText} numberOfLines={1}>
-            {server?.entity.ip ? `${server.entity.ip}:${server.entity.port}` : '未连接'}
-          </Text>
-          {server?.entity.status === ServiceBridgeStatus.Connected ? (
-            <Text style={styles.statusText}>已连接</Text>
-          ) : (
-            <Text style={[styles.statusText, styles.statusReconnecting]}>重连中…</Text>
-          )}
-        </View>
-        <TouchableOpacity onPress={handleDisconnect}>
-          <Text style={styles.disconnectText}>断开</Text>
-        </TouchableOpacity>
-      </View>
+	const handleTaskPress = useCallback((task: UITask) => {
+		// 任务详情页在步骤 6 实现，此处占位
+		// router.push(`/task/${task.id}`);
+	}, []);
 
-      {snap.servers.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Text style={styles.hintText}>未连接服务器</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={tasks}
-          keyExtractor={(t) => String(t.id)}
-          renderItem={({ item }) => {
-            const run = item.runs[item.runs.length - 1];
-            const pct = Math.round((run?.dashboard_smooth.progress ?? 0) * 100);
-            return (
-              <View style={styles.row}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {item.taskName || `(无任务名, id: ${item.id})`}
-                </Text>
-                <Text style={styles.pct}>{pct}%</Text>
-              </View>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <Text style={styles.hintText}>暂无任务</Text>
-            </View>
-          }
-        />
-      )}
+	const handleReconnect = useCallback(() => {
+		if (server) appStore.reConnectServer(server.data.id);
+	}, [server]);
 
-      {progress >= 0 && (
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>队列总进度 {(progress * 100).toFixed(0)}%</Text>
-        </View>
-      )}
-    </SafeAreaView>
-  );
+	// 渲染单个任务
+	const renderTask = ({ item }: { item: UITask }) => (
+		<TaskItem task={item} onPress={handleTaskPress} />
+	);
+
+	// 空列表（无任务时显示 drop_files 占位）
+	const renderEmpty = () => (
+		<Pressable style={styles.emptyWrap}>
+			<View style={styles.emptySvg}>
+				<DropFilesIcon size={260} />
+			</View>
+			<Text style={styles.emptyText}>拖放一个/多个多媒体文件到这里</Text>
+			<Text style={styles.emptySub}>或点击此处添加任务</Text>
+		</Pressable>
+	);
+
+	const keyExtractor = useCallback((t: UITask) => String(t.id), []);
+
+	return (
+		<SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+			<HeaderBar onMorePress={() => setMenuVisible(true)} />
+
+			{/* 掉线面板 */}
+			{disconnected ? (
+				<DisconnectPanel
+					status={server!.entity.status}
+					onRetry={handleReconnect}
+				/>
+			) : (
+				<FlatList
+					data={tasks}
+					keyExtractor={keyExtractor}
+					renderItem={renderTask}
+					ListEmptyComponent={renderEmpty}
+					contentContainerStyle={tasks.length === 0 ? styles.emptyList : styles.list}
+				/>
+			)}
+
+			<MoreMenu
+				visible={menuVisible}
+				onClose={() => setMenuVisible(false)}
+				onLogout={handleLogout}
+			/>
+		</SafeAreaView>
+	);
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#f2f3f5' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    height: 48,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ddd',
-  },
-  headerLeft: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  ipText: { fontSize: 16, fontWeight: '600', color: '#333', flexShrink: 1 },
-  statusText: { fontSize: 12, color: '#2e9e44', marginLeft: 8 },
-  statusReconnecting: { color: '#e6a23c' },
-  disconnectText: { fontSize: 15, color: '#208AEF' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fff',
-  },
-  name: { flex: 1, fontSize: 15, color: '#333', marginRight: 12 },
-  pct: { fontSize: 15, fontWeight: '600', color: '#208AEF' },
-  emptyWrap: { alignItems: 'center', paddingTop: 60 },
-  hintText: { fontSize: 14, color: '#aaa' },
-  footer: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ddd',
-    backgroundColor: '#fff',
-  },
-  footerText: { fontSize: 13, color: '#666' },
+	safeArea: { flex: 1, backgroundColor: colors.bg },
+	list: { padding: 10 },
+	emptyList: { flexGrow: 1 },
+	emptyWrap: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingHorizontal: 40,
+	},
+	emptySvg: {
+		width: 260,
+		height: 260,
+		marginBottom: 16,
+		opacity: 0.5,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	emptyText: { fontSize: 15, color: colors.textSub, textAlign: 'center' },
+	emptySub: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 6 },
 });

@@ -33,6 +33,9 @@ export const appStore = proxy({
 	notifications: [] as Notification[],
 	servers: [] as Server[],
 	currentServerId: undefined as string | undefined,
+	// 多选模式（移动端新增）：true 时进入选择模式，点任务=切换选中；undefined 表示非选择模式
+	// 与 FFBox 的 selectedTask/isAllSelected 对齐：selectedTask 始终维护已选集合
+	multiSelect: false,
 	selectedTask: new Set<number>(),
 	isAllSelected: false,
 	taskSelectionModified: false,
@@ -143,7 +146,42 @@ export const appStore = proxy({
 		this.selectedTask = new Set(response.taskIds);
 		this.isAllSelected = false;
 		this.taskSelectionModified = false;
+		this.multiSelect = true;	// 移动端：按条件选择后进入多选模式
 		return response.taskIds;
+	},
+	/**
+	 * 进入/退出多选模式
+	 */
+	toggleMultiSelect() {
+		this.multiSelect = !this.multiSelect;
+		if (this.multiSelect) {
+			// 进入选择模式时清空已选
+			this.selectedTask = new Set();
+			this.isAllSelected = false;
+		} else {
+			this.selectedTask = new Set();
+		}
+	},
+	/**
+	 * 反选全部任务（参考 ActionBar.handleSelectAllClick + 纲要 3.1.1）
+	 * 反选后数量为 0 则退出选择模式
+	 */
+	async invertSelection() {
+		const ids = await this.fetchAllTaskIds();
+		const all = new Set(ids);
+		for (const id of all) if (this.selectedTask.has(id)) all.delete(id);
+		this.selectedTask = all;
+		if (this.selectedTask.size === 0) {
+			this.multiSelect = false;
+			this.selectedTask = new Set();
+		}
+	},
+	/**
+	 * 退出多选模式
+	 */
+	exitMultiSelect() {
+		this.multiSelect = false;
+		this.selectedTask = new Set();
 	},
 	/**
 	 * 获取 service 的 task 更新到本地
