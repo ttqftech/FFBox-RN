@@ -3,6 +3,7 @@
 // 背景进度条：绿/黄/灰/红（对齐 FFBox taskBackgroundProgressStyle）。
 // 左滑露出「选择预设」「暂停/重置/删除」两个操作按钮。
 // 多选模式：点任务 = 切换选中，不进入详情。
+import { memo } from 'react';
 import { View, Text, Pressable, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -17,9 +18,9 @@ import { getOutputDuration } from '../common/utils';
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
 interface Props {
-	task: UITask;
-	/** 非选择模式点击任务（进入详情页，步骤 6 实现） */
-	onPress?: (task: UITask) => void;
+	taskId: number;
+	isSelected: boolean;	// 如果在 TaskItem 内部检查，那么每次更新都触发所有 TaskItem render；通过 props 外部检查，就能利用 props 不变 memo 优化
+	onPress?: (taskId: number) => void;	// 非选择模式点击任务（进入详情页，步骤 6 实现）
 }
 
 // 任务状态 → 图标/颜色（参考 FFBox taskStatusIcon）
@@ -64,8 +65,12 @@ function isDashboardVisible(status: TaskStatus): boolean {
 	return [TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(status);
 }
 
-export function TaskItem({ task, onPress }: Props) {
+export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: Props) {
 	const snap = useSnapshot(appStore);
+	const server = snap.currentServer;
+	const index = server?.data.taskIdToIndex.get(taskId);
+	const task = (index !== undefined ? server?.data.tasks[index] : undefined) as UITask | undefined;
+	if (!task) return null;
 	const run = task.runs[task.selectedRunIndex];
 	const d = run?.dashboard_smooth ?? { progress: 0, bitrate: 0, speed: 0, time: 0, frame: 0, size: 0 };
 	const runStatus = run?.status ?? task.status;
@@ -74,17 +79,16 @@ export function TaskItem({ task, onPress }: Props) {
 	const pct = Math.round((d.progress ?? 0) * 100);
 	const dashboardVisible = isDashboardVisible(runStatus);
 	const totalDuration = getOutputDuration(task);
-	const selected = snap.multiSelect && snap.selectedTask.has(task.id);
+	const selected = isSelected;
 
 	const handlePress = () => {
-		if (snap.multiSelect) {
-			// 选择模式：点任务 = 切换选中，不进入详情
-			const selected = new Set(snap.selectedTask);
-			if (selected.has(task.id)) selected.delete(task.id);
-			else selected.add(task.id);
-			appStore.selectedTask = selected;
+		if (snap.selectedTask) {
+			const newSelected = new Set(snap.selectedTask);
+			if (newSelected.has(taskId)) newSelected.delete(taskId);
+			else newSelected.add(taskId);
+			appStore.selectedTask = newSelected.size === 0 ? undefined : newSelected;	// 如果清空了那就退出多选模式
 		} else {
-			onPress?.(task);
+			onPress?.(taskId);
 		}
 	};
 
@@ -99,11 +103,11 @@ export function TaskItem({ task, onPress }: Props) {
 		if (!server) return;
 		const entity = server.entity;
 		if (task.status === TaskStatus.running || task.status === TaskStatus.paused_queued) {
-			entity.taskPause([task.id]);
+			entity.taskPause([taskId]);
 		} else if ([TaskStatus.idle_queued, TaskStatus.paused, TaskStatus.stopping, TaskStatus.finishing, TaskStatus.finished, TaskStatus.error].includes(task.status)) {
-			entity.taskReset([task.id]);
+			entity.taskReset([taskId]);
 		} else if (task.status === TaskStatus.idle || task.status === TaskStatus.initializing) {
-			appStore.deleteTasks([task.id]);
+			appStore.deleteTasks([taskId]);
 		}
 	};
 
@@ -158,7 +162,7 @@ export function TaskItem({ task, onPress }: Props) {
 			</Pressable>
 		</ReanimatedSwipeable>
 	);
-}
+});
 
 const styles = StyleSheet.create({
 	task: {

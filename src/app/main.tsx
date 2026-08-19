@@ -34,9 +34,9 @@ export default function MainScreen() {
 		router.replace('/');
 	}, [server, router]);
 
-	const handleTaskPress = useCallback((task: UITask) => {
+	const handleTaskPress = useCallback((taskId: number) => {
 		// 任务详情页在步骤 6 实现，此处占位
-		// router.push(`/task/${task.id}`);
+		// router.push(`/task/${taskId}`);
 	}, []);
 
 	const handleReconnect = useCallback(() => {
@@ -44,12 +44,16 @@ export default function MainScreen() {
 	}, [server]);
 
 	// 渲染单个任务
-	const renderTask = ({ item }: { item: UITask }) => (
-		<TaskItem task={item} onPress={handleTaskPress} />
-	);
+	const renderTask = useCallback(({ item }: { item: UITask }) => (
+		<TaskItem
+			taskId={item.id}
+			isSelected={!!snap.selectedTask && snap.selectedTask.has(item.id)}
+			onPress={handleTaskPress}
+		/>
+	), [handleTaskPress, snap.selectedTask]);
 
 	// 空列表（无任务时显示 drop_files 占位）
-	const renderEmpty = () => (
+	const renderEmpty = useCallback(() => (
 		<Pressable style={styles.emptyWrap}>
 			<View style={styles.emptySvg}>
 				<DropFilesIcon size={260} />
@@ -57,10 +61,11 @@ export default function MainScreen() {
 			<Text style={styles.emptyText}>拖放一个/多个多媒体文件到这里</Text>
 			<Text style={styles.emptySub}>或点击此处添加任务</Text>
 		</Pressable>
-	);
+	), []);
 
 	const keyExtractor = useCallback((t: UITask) => String(t.id), []);
 
+	console.log('tasklist render');
 	return (
 		<SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
 			<HeaderBar onMorePress={() => setMenuVisible(true)} />

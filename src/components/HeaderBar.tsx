@@ -26,12 +26,21 @@ export function HeaderBar({ onMorePress }: Props) {
 	const handleStartPause = () => {
 		if (connected) appStore.startNpause();
 	};
-	const handleMultiSelect = () => {
-		// 非选择模式 → 进入多选模式；选择模式 → 反选（0 则自动退出）
-		if (snap.multiSelect) {
-			appStore.invertSelection();
+	const handleRangeSelect = async () => {
+		// TODO
+	};
+	const handleMultiSelect = async () => {
+		if (snap.selectedTask) {
+			const ids = await appStore.fetchAllTaskIds();	// 虽然目前不做分页查询，本地保留所有任务，但同步 PC 端行为，通过接口取所有 id
+			const inverted = new Set(ids);
+			for (const id of inverted) {
+				if (snap.selectedTask.has(id)) inverted.delete(id);
+			}
+			appStore.selectedTask = inverted.size === 0 ? undefined : inverted;	// 反选后如果清空了那就退出多选模式
 		} else {
-			appStore.toggleMultiSelect();
+			// 进入多选模式
+			appStore.selectedTask = new Set();
+			appStore.isAllSelected = false;
 		}
 	};
 
@@ -49,11 +58,17 @@ export function HeaderBar({ onMorePress }: Props) {
 				{title}
 			</Text>
 			<View style={styles.right}>
-				<TouchableOpacity style={styles.btn} onPress={handleStartPause} disabled={!connected} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-					<Ionicons name={running ? 'pause' : 'play'} size={22} color={connected ? colors.primary : colors.textMuted} />
-				</TouchableOpacity>
+				{snap.selectedTask ? (
+					<TouchableOpacity style={[styles.btn, styles.textBtn]} onPress={handleRangeSelect} hitSlop={{ top: 6, bottom: 6 }}>
+						<Text style={styles.btnText}>区间（未实现）</Text>
+					</TouchableOpacity>
+				) : (
+					<TouchableOpacity style={styles.btn} onPress={handleStartPause} disabled={!connected} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+						<Ionicons name={running ? 'pause' : 'play'} size={22} color={connected ? colors.primary : colors.textMuted} />
+					</TouchableOpacity>
+				)}
 				<TouchableOpacity style={[styles.btn, styles.textBtn]} onPress={handleMultiSelect} hitSlop={{ top: 6, bottom: 6 }}>
-					<Text style={styles.btnText}>{snap.multiSelect ? '反选' : '多选'}</Text>
+					<Text style={styles.btnText}>{snap.selectedTask ? '反选' : '多选'}</Text>
 				</TouchableOpacity>
 				<TouchableOpacity style={styles.btn} onPress={onMorePress} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
 					<Ionicons name="ellipsis-horizontal" size={24} color={colors.textMain} />

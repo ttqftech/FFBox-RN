@@ -95,8 +95,8 @@ export function MoreMenu({ visible, onClose, onLogout }: Props) {
 
 	const handleSelectedAction = (action: (ids: number[]) => void) => {
 		if (!server || !connected) return;
-		action([...snap.selectedTask]);
-		appStore.exitMultiSelect();
+		action([...snap.selectedTask!]);
+		appStore.selectedTask = undefined;
 		onClose();
 	};
 
@@ -115,9 +115,9 @@ export function MoreMenu({ visible, onClose, onLogout }: Props) {
 				<Pressable style={styles.backdrop} onPress={onClose}>
 					<Pressable style={styles.sheet}>
 						<View style={styles.handle} />
-						<Text style={styles.sheetTitle}>{snap.multiSelect ? `已选择 ${snap.selectedTask.size} 个任务` : '更多操作'}</Text>
+						<Text style={styles.sheetTitle}>{snap.selectedTask ? `已选择 ${snap.selectedTask.size} 个任务` : '更多操作'}</Text>
 						<ScrollView style={styles.scroll} bounces={false}>
-							{snap.multiSelect ? (
+							{snap.selectedTask ? (
 								<>
 									{menuItem('start', 'play', '立即开始', () => handleSelectedAction((ids) => server?.entity.taskStart(ids)))}
 									{menuItem('ready', 'timer-outline', '排队开始', () => handleSelectedAction((ids) => server?.entity.taskReady(ids)))}

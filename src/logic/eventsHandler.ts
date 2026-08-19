@@ -33,7 +33,7 @@ export function handleTasklistUpdate(server: Server, data: { added?: { taskId: n
 	// 处理删除
 	if (data.removed?.length) {
 		for (const { taskId } of data.removed) {
-			appStore.selectedTask.delete(taskId);
+			appStore.selectedTask?.delete(taskId);
 			const arrayIndex = serverData.taskIdToIndex.get(taskId);
 			if (arrayIndex !== undefined) {
 				const removedGlobalIndex = serverData.tasks[arrayIndex].taskIndex;
