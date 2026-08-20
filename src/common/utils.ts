@@ -154,7 +154,6 @@ export function getInitialUITask(id: number, fileName: string, outputParams?: Ou
 		...baseTask,
 		runs: uiRuns,
 		taskIndex: 0,
-		selectedRunIndex: 1,
 	};
 }
 

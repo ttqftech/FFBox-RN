@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { appStore } from '../stores/appStore';
-import { getServersInfo, saveServersInfo, ServerInfo } from '../common/storage';
+import { appStore } from '@/stores/appStore';
+import { getServersInfo, saveServersInfo, ServerInfo } from '@/common/storage';
 
 /** 与某个服务器信息是否同一条（忽略密码） */
 function isSameServer(a: ServerInfo, b: ServerInfo) {

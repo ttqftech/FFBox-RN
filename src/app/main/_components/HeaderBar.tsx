@@ -4,9 +4,9 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSnapshot } from 'valtio';
-import { appStore } from '../stores/appStore';
-import { ServiceBridgeStatus } from '../bridges/serviceBridge';
-import { colors } from '../common/theme';
+import { appStore } from '@/stores/appStore';
+import { ServiceBridgeStatus } from '@/bridges/serviceBridge';
+import { colors, shadows } from '@/common/theme';
 
 interface Props {
 	/** 点击「⋯」更多按钮（由主界面打开操作菜单） */
@@ -20,14 +20,31 @@ export function HeaderBar({ onMorePress }: Props) {
 	const connected = server?.entity.status === ServiceBridgeStatus.Connected;
 	const running = data?.workingStatus === 'running';
 	const progress = data?.progress ?? -1;
-	// 队列总进度：progress >= 0 时形如 `FFBox - 100%`，否则仅显示 `FFBox`
-	const title = progress >= 0 ? `FFBox - ${Math.round(progress * 100)}%` : 'FFBox';
+	const title = progress >= 0 ? `FFBox RN - ${Math.round(progress * 100)}%` : 'FFBox RN';
 
 	const handleStartPause = () => {
 		if (connected) appStore.startNpause();
 	};
 	const handleRangeSelect = async () => {
-		// TODO
+		const server = appStore.currentServer;
+		if (!server || !snap.selectedTask) return;
+		// 收集选中任务的 taskIndex，取最小和最大值
+		let minIndex = Infinity;
+		let maxIndex = -Infinity;
+		for (const taskId of snap.selectedTask) {
+			const task = server.data.tasks.find(t => t.id === taskId);
+			if (task && task.taskIndex !== undefined) {
+				if (task.taskIndex < minIndex) minIndex = task.taskIndex;
+				if (task.taskIndex > maxIndex) maxIndex = task.taskIndex;
+			}
+		}
+		if (minIndex === Infinity || maxIndex === -Infinity) return;
+		const size = maxIndex - minIndex + 1;
+		// 通过接口取到区间内的所有任务 ID
+		const response = await server.entity.getTaskList(minIndex, size, true);
+		if ('taskIds' in response) {
+			appStore.selectedTask = new Set(response.taskIds);
+		}
 	};
 	const handleMultiSelect = async () => {
 		if (snap.selectedTask) {
@@ -60,11 +77,13 @@ export function HeaderBar({ onMorePress }: Props) {
 			<View style={styles.right}>
 				{snap.selectedTask ? (
 					<TouchableOpacity style={[styles.btn, styles.textBtn]} onPress={handleRangeSelect} hitSlop={{ top: 6, bottom: 6 }}>
-						<Text style={styles.btnText}>区间（未实现）</Text>
+						<Text style={styles.btnText}>区间</Text>
 					</TouchableOpacity>
 				) : (
 					<TouchableOpacity style={styles.btn} onPress={handleStartPause} disabled={!connected} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-						<Ionicons name={running ? 'pause' : 'play'} size={22} color={connected ? colors.primary : colors.textMuted} />
+						{running
+							? <Text>⏸️</Text>
+							: <Text>▶️</Text>}
 					</TouchableOpacity>
 				)}
 				<TouchableOpacity style={[styles.btn, styles.textBtn]} onPress={handleMultiSelect} hitSlop={{ top: 6, bottom: 6 }}>
@@ -87,6 +106,7 @@ const styles = StyleSheet.create({
 		backgroundColor: colors.card,
 		borderBottomWidth: StyleSheet.hairlineWidth,
 		borderBottomColor: colors.border,
+		...shadows.header,
 	},
 	left: {
 		flexShrink: 1,

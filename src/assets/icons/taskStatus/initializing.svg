@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- 两个半圆组成一个完整圆环（对应 FFBox initializing.svg，去掉 SMIL 动画，颜色解析自 primaryColor = 208AEF） -->
+  <path d="M12 3 A9 9 0 0 1 12 21" fill="none" stroke="#208AEF" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M12 3 A9 9 0 0 0 12 21" fill="none" stroke="#208AEF" stroke-opacity="0.1" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

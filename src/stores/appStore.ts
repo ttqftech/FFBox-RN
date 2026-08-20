@@ -108,7 +108,7 @@ export const appStore = proxy({
 				const uiTask = getInitialUITask(task.id, '');
 				mergeTaskFromService(uiTask, task, true);
 				uiTask.taskIndex = globalIndex;
-				uiTask.selectedRunIndex = uiTask.runs.length - 1;
+				// uiTask.selectedRunIndex = uiTask.runs.length - 1;
 				newTasks.push(uiTask);
 			}
 			newMap.set(task.id, i);

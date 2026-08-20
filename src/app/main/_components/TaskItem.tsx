@@ -6,14 +6,27 @@
 import { memo } from 'react';
 import { View, Text, Pressable, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { SvgProps } from 'react-native-svg';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSnapshot } from 'valtio';
-import { appStore } from '../stores/appStore';
-import { TaskStatus } from '../common/types';
-import { UITask } from '../types';
-import { colors } from '../common/theme';
-import { formatSize, formatTime, formatSpeed, formatLeftTime } from '../common/formatUtils';
-import { getOutputDuration } from '../common/utils';
+import { appStore } from '@/stores/appStore';
+import { TaskStatus } from '@/common/types';
+import { UITask } from '@/types';
+import { colors, shadows } from '@/common/theme';
+import { formatSize, formatTime, formatSpeed, formatLeftTime } from '@/common/formatUtils';
+import { getOutputDuration } from '@/common/utils';
+// 任务状态图标：直接使用 FFBox 同款 SVG（见 FFBox TaskItem 目录），RN 引入后以组件形式使用
+import IconInitializing from '@/assets/icons/taskStatus/initializing.svg';
+import IconIdle from '@/assets/icons/taskStatus/idle.svg';
+import IconIdleQueued from '@/assets/icons/taskStatus/idle_queued.svg';
+import IconRunning from '@/assets/icons/taskStatus/running.svg';
+import IconPaused from '@/assets/icons/taskStatus/paused.svg';
+import IconPausedQueued from '@/assets/icons/taskStatus/paused_queued.svg';
+import IconStopping from '@/assets/icons/taskStatus/stopping.svg';
+import IconFinished from '@/assets/icons/taskStatus/finished.svg';
+import IconError from '@/assets/icons/taskStatus/error.svg';
+// 左滑操作按钮图标：第二个按钮使用 FFBox TaskItem/deleteNpause_button.svg（暂停/删除按钮同款）
+import IconDeleteNpause from '@/assets/icons/deleteNpause_button.svg';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -23,21 +36,11 @@ interface Props {
 	onPress?: (taskId: number) => void;	// 非选择模式点击任务（进入详情页，步骤 6 实现）
 }
 
-// 任务状态 → 图标/颜色（参考 FFBox taskStatusIcon）
-function getStatusVisual(status: TaskStatus): { icon: IoniconName; color: string } {
-	switch (status) {
-		case TaskStatus.initializing: return { icon: 'sync-outline', color: colors.blue };
-		case TaskStatus.idle: return { icon: 'play-circle-outline', color: colors.textSub };
-		case TaskStatus.idle_queued: return { icon: 'time-outline', color: colors.yellow };
-		case TaskStatus.running: return { icon: 'play-circle', color: colors.green };
-		case TaskStatus.paused: return { icon: 'pause-circle', color: colors.yellow };
-		case TaskStatus.paused_queued: return { icon: 'hourglass-outline', color: colors.yellow };
-		case TaskStatus.stopping: return { icon: 'stop-circle-outline', color: colors.yellow };
-		case TaskStatus.finishing: return { icon: 'checkmark-circle-outline', color: colors.green };
-		case TaskStatus.finished: return { icon: 'checkmark-circle', color: colors.gray };
-		case TaskStatus.error: return { icon: 'close-circle', color: colors.red };
-		default: return { icon: 'help-circle-outline', color: colors.textSub };
-	}
+// 任务状态 → SVG 图标（对齐 FFBox taskStatusIcon 映射）
+function getStatusIcon(status: TaskStatus): React.FC<SvgProps> {
+	return [IconInitializing, IconIdle, IconIdleQueued, IconRunning, IconPaused, IconPausedQueued, IconStopping, IconFinished, IconError][
+		[TaskStatus.initializing, TaskStatus.idle, TaskStatus.idle_queued, TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finished, TaskStatus.error].indexOf(status)
+	];
 }
 
 // 进度条颜色（对齐 FFBox taskBackgroundProgressStyle 的绿/黄/灰/红）
@@ -60,26 +63,21 @@ function getProgressColor(status: TaskStatus): string {
 	}
 }
 
-// 是否显示 dashboard 实时数据（对齐 FFBox showDashboard）
-function isDashboardVisible(status: TaskStatus): boolean {
-	return [TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(status);
-}
-
 export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: Props) {
 	const snap = useSnapshot(appStore);
 	const server = snap.currentServer;
 	const index = server?.data.taskIdToIndex.get(taskId);
 	const task = (index !== undefined ? server?.data.tasks[index] : undefined) as UITask | undefined;
 	if (!task) return null;
-	const run = task.runs[task.selectedRunIndex];
+	const run = task.runs[task.runs.length - 1];
 	const d = run?.dashboard_smooth ?? { progress: 0, bitrate: 0, speed: 0, time: 0, frame: 0, size: 0 };
 	const runStatus = run?.status ?? task.status;
-	const { icon, color } = getStatusVisual(runStatus);
+
+	const StatusIcon = getStatusIcon(runStatus);
 	const progressColor = getProgressColor(runStatus);
 	const pct = Math.round((d.progress ?? 0) * 100);
-	const dashboardVisible = isDashboardVisible(runStatus);
+	const dashboardVisible = [TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(runStatus);
 	const totalDuration = getOutputDuration(task);
-	const selected = isSelected;
 
 	const handlePress = () => {
 		if (snap.selectedTask) {
@@ -128,6 +126,7 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 				style={[styles.actionBtn, styles.actionPreset]}
 				onPress={() => { methods.close(); handleChoosePreset(); }}
 			>
+				{/* FFBox 无预设图标，保留 Ionicons */}
 				<Ionicons name="albums-outline" size={20} color="#fff" />
 				<Text style={styles.actionText}>预设</Text>
 			</TouchableOpacity>
@@ -135,6 +134,7 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 				style={[styles.actionBtn, styles.actionPauseNremove]}
 				onPress={() => { methods.close(); handlePauseNremove(); }}
 			>
+				{/* 暂停/删除/重置按钮：FFBox 同款 deleteNpause_button.svg */}
 				<Ionicons name={secondActionIcon} size={20} color="#fff" />
 				<Text style={styles.actionText}>暂停/删除</Text>
 			</TouchableOpacity>
@@ -143,15 +143,15 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 
 	return (
 		<ReanimatedSwipeable renderRightActions={renderRightActions} friction={2} rightThreshold={40} overshootRight={false}>
-			<Pressable style={[styles.task, selected && styles.selected]} onPress={handlePress}>
+			<Pressable style={[styles.task, isSelected && styles.selected]} onPress={handlePress}>
 				<View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: progressColor }]} />
 				<View style={styles.row1}>
-					<Ionicons name={icon} size={20} color={color} style={styles.statusIcon} />
+					<StatusIcon width={20} height={20} style={styles.statusIcon} />
 					<Text style={styles.id}>{task.id}</Text>
 					<Text style={styles.name} numberOfLines={1}>
 						{task.taskName ?? '读取中'}
 					</Text>
-					<Text style={styles.pct}>{pct}%</Text>
+					<Text style={styles.pct}>{((d.progress ?? 0) * 100).toFixed(1)}%</Text>
 				</View>
 				<View style={styles.row2}>
 					<Text style={styles.metric}>{dashboardVisible ? formatSize(d.size) : '-'}</Text>
@@ -170,13 +170,14 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		paddingVertical: 10,
 		marginBottom: 6,
-		borderRadius: 8,
+		borderRadius: 3,	// 对齐 FFBox .backgroundWhite 的 border-radius: 3px
 		overflow: 'hidden',
 		borderWidth: StyleSheet.hairlineWidth,
 		borderColor: colors.border,
+		...shadows.taskItem,
 	},
 	selected: {
-		backgroundColor: '#e8f2fd',
+		backgroundColor: colors.menuItemHovered,
 		borderColor: colors.primary,
 	},
 	progressFill: {

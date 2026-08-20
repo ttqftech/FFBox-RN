@@ -2,19 +2,19 @@
 // 集成 HeaderBar、TaskItem、MoreMenu、DisconnectPanel。
 // 队列总进度已移至 HeaderBar 标题栏（FFBox - 100%），画面底部不再有进度 footer。
 import { useCallback, useState } from 'react';
-import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useSnapshot } from 'valtio';
-import { appStore } from '../stores/appStore';
-import { ServiceBridgeStatus } from '../bridges/serviceBridge';
-import { HeaderBar } from '../components/HeaderBar';
-import { TaskItem } from '../components/TaskItem';
-import { MoreMenu } from '../components/MoreMenu';
-import { DisconnectPanel } from '../components/DisconnectPanel';
-import { DropFilesIcon } from '../components/DropFilesIcon';
-import { UITask } from '../types';
-import { colors } from '../common/theme';
+import { appStore } from '@/stores/appStore';
+import { UITask } from '@/types';
+import { colors } from '@/common/theme';
+import { ServiceBridgeStatus } from '@/bridges/serviceBridge';
+import { HeaderBar } from './_components/HeaderBar';
+import { TaskItem } from './_components/TaskItem';
+import { MoreMenu } from './_components/MoreMenu';
+import { DisconnectPanel } from './_components/DisconnectPanel';
+import DropFilesSvg from './_components/drop_files.svg';
 
 export default function MainScreen() {
 	const router = useRouter();
@@ -43,47 +43,33 @@ export default function MainScreen() {
 		if (server) appStore.reConnectServer(server.data.id);
 	}, [server]);
 
-	// 渲染单个任务
-	const renderTask = useCallback(({ item }: { item: UITask }) => (
-		<TaskItem
-			taskId={item.id}
-			isSelected={!!snap.selectedTask && snap.selectedTask.has(item.id)}
-			onPress={handleTaskPress}
-		/>
-	), [handleTaskPress, snap.selectedTask]);
-
-	// 空列表（无任务时显示 drop_files 占位）
-	const renderEmpty = useCallback(() => (
-		<Pressable style={styles.emptyWrap}>
-			<View style={styles.emptySvg}>
-				<DropFilesIcon size={260} />
-			</View>
-			<Text style={styles.emptyText}>拖放一个/多个多媒体文件到这里</Text>
-			<Text style={styles.emptySub}>或点击此处添加任务</Text>
-		</Pressable>
-	), []);
-
-	const keyExtractor = useCallback((t: UITask) => String(t.id), []);
-
 	console.log('tasklist render');
 	return (
 		<SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
 			<HeaderBar onMorePress={() => setMenuVisible(true)} />
 
-			{/* 掉线面板 */}
 			{disconnected ? (
 				<DisconnectPanel
 					status={server!.entity.status}
 					onRetry={handleReconnect}
 				/>
 			) : (
-				<FlatList
-					data={tasks}
-					keyExtractor={keyExtractor}
-					renderItem={renderTask}
-					ListEmptyComponent={renderEmpty}
-					contentContainerStyle={tasks.length === 0 ? styles.emptyList : styles.list}
-				/>
+				<ScrollView style={{}} contentContainerStyle={styles.taskArea}>
+					{tasks.map(task => (
+						<TaskItem
+							key={task.id}
+							taskId={task.id}
+							isSelected={!!snap.selectedTask && snap.selectedTask.has(task.id)}
+							onPress={handleTaskPress}
+						/>
+					))}
+					<Pressable style={styles.dropFilesDiv}>
+						<View style={styles.svgWrapper}>
+							<DropFilesSvg width={260} height={260} />
+						</View>
+					</Pressable>
+				</ScrollView>
+	
 			)}
 
 			<MoreMenu
@@ -97,22 +83,16 @@ export default function MainScreen() {
 
 const styles = StyleSheet.create({
 	safeArea: { flex: 1, backgroundColor: colors.bg },
-	list: { padding: 10 },
-	emptyList: { flexGrow: 1 },
-	emptyWrap: {
+	taskArea: { flexGrow: 1, padding: 8 },
+	dropFilesDiv: {
 		flex: 1,
 		alignItems: 'center',
 		justifyContent: 'center',
 		paddingHorizontal: 40,
 	},
-	emptySvg: {
+	svgWrapper: {
 		width: 260,
 		height: 260,
-		marginBottom: 16,
 		opacity: 0.5,
-		alignItems: 'center',
-		justifyContent: 'center',
 	},
-	emptyText: { fontSize: 15, color: colors.textSub, textAlign: 'center' },
-	emptySub: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 6 },
 });
