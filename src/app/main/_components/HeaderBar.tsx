@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSnapshot } from 'valtio';
 import { appStore } from '@/stores/appStore';
 import { ServiceBridgeStatus } from '@/bridges/serviceBridge';
-import { colors, shadows } from '@/common/theme';
+import { colors } from '@/common/theme';
 
 interface Props {
 	/** 点击「⋯」更多按钮（由主界面打开操作菜单） */
@@ -103,10 +103,10 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		height: 54,
 		paddingHorizontal: 12,
-		backgroundColor: colors.card,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-		borderBottomColor: colors.border,
-		...shadows.header,
+		backgroundColor: colors['bg97'],
+		// borderBottomWidth: StyleSheet.hairlineWidth,
+		// borderBottomColor: colors.border,
+		boxShadow: `0 3px 2px -2px ${colors['highlight']} inset, 0 20px 20px 0px rgba(0, 0, 0, 0.02), 0 6px 6px 0px rgba(0, 0, 0, 0.02)`,
 	},
 	left: {
 		flexShrink: 1,

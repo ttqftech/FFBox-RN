@@ -12,9 +12,10 @@ import { useSnapshot } from 'valtio';
 import { appStore } from '@/stores/appStore';
 import { TaskStatus } from '@/common/types';
 import { UITask } from '@/types';
-import { colors, shadows } from '@/common/theme';
-import { formatSize, formatTime, formatSpeed, formatLeftTime } from '@/common/formatUtils';
+import { colors } from '@/common/theme';
+import { formatSize, formatTime } from '@/common/formatUtils';
 import { getOutputDuration } from '@/common/utils';
+import { TaskProgressBar } from './TaskProgressBar';
 // 任务状态图标：直接使用 FFBox 同款 SVG（见 FFBox TaskItem 目录），RN 引入后以组件形式使用
 import IconInitializing from '@/assets/icons/taskStatus/initializing.svg';
 import IconIdle from '@/assets/icons/taskStatus/idle.svg';
@@ -43,26 +44,6 @@ function getStatusIcon(status: TaskStatus): React.FC<SvgProps> {
 	];
 }
 
-// 进度条颜色（对齐 FFBox taskBackgroundProgressStyle 的绿/黄/灰/红）
-function getProgressColor(status: TaskStatus): string {
-	switch (status) {
-		case TaskStatus.running:
-		case TaskStatus.finishing:
-			return colors.green;
-		case TaskStatus.paused:
-		case TaskStatus.paused_queued:
-		case TaskStatus.stopping:
-			return colors.yellow;
-		case TaskStatus.finished:
-		case TaskStatus.idle:
-			return colors.gray;
-		case TaskStatus.error:
-			return colors.red;
-		default:
-			return colors.blue;
-	}
-}
-
 export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: Props) {
 	const snap = useSnapshot(appStore);
 	const server = snap.currentServer;
@@ -70,15 +51,23 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 	const task = (index !== undefined ? server?.data.tasks[index] : undefined) as UITask | undefined;
 	if (!task) return null;
 	const run = task.runs[task.runs.length - 1];
-	const d = run?.dashboard_smooth ?? { progress: 0, bitrate: 0, speed: 0, time: 0, frame: 0, size: 0 };
+	const dashboardData = run?.dashboard_smooth ?? { progress: 0, bitrate: 0, speed: 0, time: 0, frame: 0, size: 0 };
 	const runStatus = run?.status ?? task.status;
 
 	const StatusIcon = getStatusIcon(runStatus);
-	const progressColor = getProgressColor(runStatus);
-	const pct = Math.round((d.progress ?? 0) * 100);
 	const dashboardVisible = [TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(runStatus);
-	const totalDuration = getOutputDuration(task);
+	const outputDuration = getOutputDuration(task);
 
+	const formatSpeed = (value: number) => value >= 100 ? value.toFixed(0) + '×' : (value >= 10 ? value.toFixed(1) + '×' : value.toFixed(2) + '×');
+	const formatLeftTime = (totalDuration: number, dashboardTime: number, dashboardSpeed: number) => {
+	   if (dashboardSpeed > 0) {
+		   const needTime = totalDuration / dashboardSpeed;
+		   const remainTime = (totalDuration - dashboardTime) / totalDuration * needTime;	// 剩余进度比例 * 全进度耗时
+		   return formatTime(remainTime, 'compact');
+	   }
+	   return '-';
+   }
+   
 	const handlePress = () => {
 		if (snap.selectedTask) {
 			const newSelected = new Set(snap.selectedTask);
@@ -110,13 +99,13 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 	};
 
 	// 左滑露出的第二个按钮图标按任务状态变化（暂停/重置/删除）
-	const secondActionIcon: IoniconName = (() => {
+	const secondActionIcon: [IoniconName, string] = (() => {
 		switch (task.status) {
 			case TaskStatus.running:
-			case TaskStatus.paused_queued: return 'pause';
+			case TaskStatus.paused_queued: return ['pause', '暂停'];
 			case TaskStatus.idle:
-			case TaskStatus.initializing: return 'trash-outline';
-			default: return 'refresh';
+			case TaskStatus.initializing: return ['trash-outline', '删除'];
+			default: return ['stop', '重置'];
 		}
 	})();
 
@@ -126,8 +115,7 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 				style={[styles.actionBtn, styles.actionPreset]}
 				onPress={() => { methods.close(); handleChoosePreset(); }}
 			>
-				{/* FFBox 无预设图标，保留 Ionicons */}
-				<Ionicons name="albums-outline" size={20} color="#fff" />
+				<Ionicons name="albums-outline" size={20} color={colors['66']} />
 				<Text style={styles.actionText}>预设</Text>
 			</TouchableOpacity>
 			<TouchableOpacity
@@ -135,29 +123,50 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 				onPress={() => { methods.close(); handlePauseNremove(); }}
 			>
 				{/* 暂停/删除/重置按钮：FFBox 同款 deleteNpause_button.svg */}
-				<Ionicons name={secondActionIcon} size={20} color="#fff" />
-				<Text style={styles.actionText}>暂停/删除</Text>
+				<Ionicons name={secondActionIcon[0]} size={20} color={colors['66']} />
+				<Text style={styles.actionText}>{secondActionIcon[1]}</Text>
 			</TouchableOpacity>
 		</View>
 	);
 
 	return (
-		<ReanimatedSwipeable renderRightActions={renderRightActions} friction={2} rightThreshold={40} overshootRight={false}>
-			<Pressable style={[styles.task, isSelected && styles.selected]} onPress={handlePress}>
-				<View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: progressColor }]} />
-				<View style={styles.row1}>
-					<StatusIcon width={20} height={20} style={styles.statusIcon} />
-					<Text style={styles.id}>{task.id}</Text>
-					<Text style={styles.name} numberOfLines={1}>
-						{task.taskName ?? '读取中'}
-					</Text>
-					<Text style={styles.pct}>{((d.progress ?? 0) * 100).toFixed(1)}%</Text>
-				</View>
-				<View style={styles.row2}>
-					<Text style={styles.metric}>{dashboardVisible ? formatSize(d.size) : '-'}</Text>
-					<Text style={styles.metric}>{dashboardVisible ? formatTime(d.time, 'display') : '-'}</Text>
-					<Text style={styles.metric}>{dashboardVisible ? formatSpeed(d.speed) : '-'}</Text>
-					<Text style={styles.metric}>{dashboardVisible ? formatLeftTime(totalDuration, d.time, d.speed) : '-'}</Text>
+		<ReanimatedSwipeable renderRightActions={renderRightActions} friction={1} rightThreshold={40} overshootRight={false} containerStyle={{ overflow: 'visible' }}>
+			<Pressable style={styles.taskWrapper} onPress={handlePress}>
+				<View style={[styles.task, isSelected && styles.taskSelected]}>
+					<TaskProgressBar status={runStatus} progress={dashboardData.progress ?? 0} />
+					<View style={styles.row1}>
+						<StatusIcon width={20} height={20} style={styles.statusIcon} />
+						<View style={styles.idOrIndex}>
+							<Text style={styles.idOrIndexText}>{task.id}</Text>
+						</View>
+						<Text style={styles.name} numberOfLines={1}>
+							{task.taskName ?? '读取中'}
+						</Text>
+						{[TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(run.status) && (
+							<Text style={styles.pct}>{dashboardData.progress === 1 ? '🆗' : (dashboardData.progress * 100).toFixed(1)}%</Text>
+						)}
+					</View>
+					<View style={styles.row2}>
+						{dashboardVisible ? (
+							<View style={styles.row2LeftRight}>
+								<Text style={styles.metric}>{dashboardVisible ? '输出 ' + formatSize(dashboardData.size) : ''}</Text>
+								<Text style={styles.metric}>{dashboardVisible ? `进度 ${formatTime(dashboardData.time, 'display')} / ${formatTime(outputDuration, 'compact')}` : ''}</Text>
+								<Text style={styles.metric}>{dashboardVisible ? '速度 ' + formatSpeed(dashboardData.speed) : ''}</Text>
+							</View>
+						) : (
+							<View style={styles.row2LeftRight}>
+								<Text style={styles.metric}>{'输出时长 ' + formatTime(outputDuration, 'compact')}</Text>
+							</View>
+						)}
+						<Text style={[styles.metric, styles.metricLast]}>
+							{dashboardVisible
+								? '剩余 ' + formatLeftTime(outputDuration, dashboardData.time, dashboardData.speed)
+								: ['准备中', '就绪', '排队开始', '暂停', '排队继续', '正在停止', '已完成', '出错'][[
+									TaskStatus.initializing, TaskStatus.idle, TaskStatus.idle_queued, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finished, TaskStatus.error
+								].indexOf(run.status)]
+							}
+						</Text>
+					</View>
 				</View>
 			</Pressable>
 		</ReanimatedSwipeable>
@@ -165,50 +174,78 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 });
 
 const styles = StyleSheet.create({
+	taskWrapper: {
+		paddingHorizontal: 12,
+		paddingTop: 0, paddingBottom: 12,	// 阴影扩展必要区域
+		// outlineColor: 'red', outlineWidth: 1,
+		marginTop: -8,
+		overflow: 'visible',
+	},
 	task: {
-		backgroundColor: colors.card,
+		backgroundColor: colors['bg98'],
 		paddingHorizontal: 12,
 		paddingVertical: 10,
-		marginBottom: 6,
 		borderRadius: 3,	// 对齐 FFBox .backgroundWhite 的 border-radius: 3px
 		overflow: 'hidden',
-		borderWidth: StyleSheet.hairlineWidth,
-		borderColor: colors.border,
-		...shadows.taskItem,
+		outlineColor: 'transparent', outlineWidth: 1,
+		boxShadow: `0 0 1px 2px ${colors['bg98']}, 0 2px 6px 0 rgba(0, 0, 0, 0.2)`,
+		// elevation: 4, shadowColor: '#000000', shadowOpacity: 0.16, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },	
 	},
-	selected: {
+	taskSelected: {
 		backgroundColor: colors.menuItemHovered,
-		borderColor: colors.primary,
-	},
-	progressFill: {
-		position: 'absolute',
-		left: 0,
-		bottom: 0,
-		height: 3,
+		outlineColor: colors.menuItemSelected, outlineWidth: 1,
 	},
 	row1: {
 		flexDirection: 'row',
 		alignItems: 'center',
 	},
 	statusIcon: { marginRight: 6 },
-	id: { fontSize: 12, color: colors.textSub, marginRight: 6 },
-	name: { flex: 1, fontSize: 15, color: colors.textMain },
+	idOrIndex: {
+		fontSize: 12,
+		color: colors.textSub,
+		backgroundColor: colors['bg98'],
+		marginRight: 6,
+		borderWidth: 1.5, borderColor: '#7773',
+		paddingVertical: 3, paddingHorizontal: 6,
+		borderRadius: 12,
+	},
+	idOrIndexText: { fontSize: 9.6 },
+	name: { flex: 1, fontSize: 16, color: colors['33'] },
 	pct: { fontSize: 15, fontWeight: '600', color: colors.primary, marginLeft: 8 },
 	row2: {
 		flexDirection: 'row',
+		justifyContent: 'space-between',
 		marginTop: 8,
 	},
-	metric: { fontSize: 12, color: colors.textSub, marginRight: 14 },
-	actions: {
+	row2LeftRight: {
 		flexDirection: 'row',
 	},
+	metric: {
+		fontSize: 11,
+		color: colors['66'],
+		marginRight: 12,
+	},
+	metricLast: { marginRight: 0 },
+	actions: {
+		flexDirection: 'row',
+		marginBottom: 20,
+		// outlineColor: 'red', outlineWidth: 1,
+	},
 	actionBtn: {
-		width: 76,
+		width: 60,
 		alignItems: 'center',
 		justifyContent: 'center',
-		gap: 2,
+		gap: 4,
+		// outlineColor: 'red', outlineWidth: 1,
 	},
-	actionPreset: { backgroundColor: '#8a94a6' },
-	actionPauseNremove: { backgroundColor: colors.red },
-	actionText: { fontSize: 11, color: '#fff' },
+	actionPreset: {
+		// backgroundColor: colors['bg90']
+	},
+	actionPauseNremove: {
+		// backgroundColor: colors['bg90']
+	},
+	actionText: {
+		fontSize: 11,
+		color: colors['66']
+	},
 });

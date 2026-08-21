@@ -1,43 +1,10 @@
-// 移植自 FFBox `src/common/formatUtils.ts`，仅保留移动端所需部分。
-// 移动端无 useIEC 前端设置，尺寸/码率统一使用 1000 进制（useIEC=false）。
-
 /**
- * 把 "时:分:秒(.毫)" 或 "分:秒(.毫)" 形式的字符串解析为秒数。
- * 解析失败返回 -1。
- */
-export function parseTime(timeString: string): number {
-	if (timeString === 'N/A') {
-		return -1;
-	}
-	let exp: RegExpExecArray | null;
-	if (exp = /^(\d+):([0-5]?[0-9]):([0-5]?[0-9])(.\d+)?$/.exec(timeString)) {
-		// (时):(分):(秒)(.小)
-		const hour = Number(exp[1]);
-		const minute = Number(exp[2]);
-		const second = Number(exp[3]);
-		const mili = Number(exp[4] ?? '0');
-		if (minute >= 60 || second >= 60) {
-			return -1;
-		}
-		return hour * 3600 + minute * 60 + second + Number(mili);
-	} else if (exp = /^([0-5]?[0-9]):([0-5]?[0-9])(.\d+)?$/.exec(timeString)) {
-		// (分):(秒)(.小)
-		const minute = Number(exp[1]);
-		const second = Number(exp[2]);
-		const mili = Number(exp[3] ?? '0');
-		if (minute >= 60 || second >= 60) {
-			return -1;
-		}
-		return minute * 60 + second + Number(mili);
-	}
-	return -1;
-}
-
-/**
- * 将秒数格式化为人类可读时间（移植自 FFBox `formatTime`）。
- * - style='display'：h:mm:ss / m:ss.s / ss.ss
- * - style='compact'：h:mm:ss / m:ss / N s
- * - style='ffmpeg'：HH:MM:SS.xx（FFmpeg 可直接解析）
+ * 秒数 → 时间格式化
+ * @param seconds 秒数（可带小数）
+ * @param style 格式化风格，描述"用途"而非"实现"：
+ *   - `'display'`: 人类可读，带精度信息 — `H:MM:SS / M:SS.c / s.cc`【TaskItem.graphTime、CutOperator 关键帧】
+ *   - `'compact'`: 人类可读，紧凑 — `H:MM:SS / M:SS / "X s"`【TaskItem.graphLeftTime、ProgressLog X 轴、SponsorPanel 限制时长】
+ *   - `'ffmpeg'` : 补零机器格式 — `HH:MM:SS.xx`（可直接作为 FFmpeg 参数）
  */
 export function formatTime(seconds: number, style: 'display' | 'compact' | 'ffmpeg'): string {
 	// NaN / -1 视作"未知时长"
@@ -66,12 +33,46 @@ export function formatTime(seconds: number, style: 'display' | 'compact' | 'ffmp
 		if (style === 'compact') {
 			return `${second.toFixed(0)} s`;
 		}
-		return second.toFixed(2);
+		return second.toFixed(2) + 's';	// 移动端临时补丁
 	}
 }
 
 /**
- * 将字节大小转换为人类可读数字（移植自 FFBox `formatSize`）
+ * 传入 ffmpeg 支持的时间格式（如 HH:MM:SS.xx 或 M:SS.xx 或 xxx.xx），返回秒数（如格式错误则返回 -1）
+ */
+export function parseTime(timeString: string): number {
+	if (timeString === 'N/A') {
+		return -1;
+	}
+	let exp: RegExpExecArray | null;
+	if (exp = /^(\d+):([0-5]?[0-9]):([0-5]?[0-9])(.\d+)?$/.exec(timeString)) {
+		// (时):(分):(秒)(.小)
+		const hour = Number(exp[1]);
+		const minute = Number(exp[2]);
+		const second = Number(exp[3]);
+		const mili = Number(exp[4] ?? '0');
+		if (minute >= 60 || second >= 60) {
+			return -1;
+		}
+		return hour * 3600 + minute * 60 + second + Number(mili);
+	} else if (exp = /^([0-5]?[0-9]):([0-5]?[0-9])(.\d+)?$/.exec(timeString)) {
+		// (分):(秒)(.小)
+		const minute = Number(exp[1]);
+		const second = Number(exp[2]);
+		const mili = Number(exp[3] ?? '0');
+		if (minute >= 60 || second >= 60) {
+			return -1;
+		}
+		return minute * 60 + second + Number(mili);
+	} else if (/^(\d+)(.\d+)?$/.test(timeString)) {
+		// (秒)(.小)
+		return Number(timeString);
+	}
+	return -1;
+}
+
+/**
+ * 将字节大小转换为人类可读数字
  */
 export function formatSize(B: number, useIEC?: boolean) {
 	if (useIEC) {
@@ -102,7 +103,10 @@ export function formatSize(B: number, useIEC?: boolean) {
 }
 
 /**
- * 码率（bit/s）格式化（移植自 FFBox `formatBitrate`）
+ * 码率（bit/s）格式化
+ * 规则：以 10 Mibps/Mbps 为界，2 档切换
+ *   - `>= 10 * unit^2` → x.x Mibps/Mbps
+ *   - `<  10 * unit^2` → x kibps/kbps
  */
 export function formatBitrate(bps: number, useIEC?: boolean): string {
 	const unit = useIEC ? 1024 : 1000;
@@ -114,22 +118,30 @@ export function formatBitrate(bps: number, useIEC?: boolean): string {
 }
 
 /**
- * 转码速度格式化（移植自 FFBox TaskItem 的 graphSpeed）：
- * 倍率越大保留位数越少：>=10 → x.x，>=1 → x.x，<1 → x.xx
+ * 传输速率（Byte/s）格式化
+ * 规则：以 10 MiBps/MBps 为界，2 档切换
  */
-export function formatSpeed(value: number): string {
-	return value >= 10 ? value.toFixed(0) + '×' : (value >= 1 ? value.toFixed(1) + '×' : value.toFixed(2) + '×');
+export function formatTransferRate(Bps: number, useIEC?: boolean): string {
+	const unit = useIEC ? 1024 : 1000;
+	if (Bps >= 10 * unit ** 2) {
+		return (Bps / unit ** 2).toFixed(1) + ' ' + (useIEC ? 'MiBps' : 'MBps');
+	} else {
+		return (Bps / unit).toFixed(0) + ' ' + (useIEC ? 'kiBps' : 'kBps');
+	}
 }
 
 /**
- * 预计剩余时间（移植自 FFBox TaskItem 的 graphLeftTime）：
- * 依据总时长、当前时间与速度估算剩余时长，格式为 compact。
+ * 以对象方式调用所有格式工具：
+ *   formatUtils.time(seconds, style)   // 原 formatDuration，含 formatTimeToFFmpegStyle(style='ffmpeg') 功能
+ *   formatUtils.parseTime(timeString)  // 原 parseTimeString
+ *   formatUtils.size(B, useIEC)
+ *   formatUtils.bitrate(bps, useIEC)
+ *   formatUtils.transferRate(Bps, useIEC)
  */
-export function formatLeftTime(totalDuration: number, dashboardTime: number, dashboardSpeed: number): string {
-	if (dashboardSpeed > 0) {
-		const needTime = totalDuration / dashboardSpeed;
-		const remainTime = (totalDuration - dashboardTime) / totalDuration * needTime;	// 剩余进度比例 * 全进度耗时
-		return formatTime(remainTime, 'compact');
-	}
-	return '-';
-}
+export default {
+	time: formatTime,
+	parseTime: parseTime,
+	size: formatSize,
+	bitrate: formatBitrate,
+	transferRate: formatTransferRate,
+};

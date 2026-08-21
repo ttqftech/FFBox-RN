@@ -82,8 +82,8 @@ export default function MainScreen() {
 }
 
 const styles = StyleSheet.create({
-	safeArea: { flex: 1, backgroundColor: colors.bg },
-	taskArea: { flexGrow: 1, padding: 8 },
+	safeArea: { flex: 1, backgroundColor: colors['bg92'] },
+	taskArea: { flexGrow: 1, paddingTop: 20 },
 	dropFilesDiv: {
 		flex: 1,
 		alignItems: 'center',
