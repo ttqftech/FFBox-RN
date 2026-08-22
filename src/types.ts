@@ -1,6 +1,7 @@
 // 移植自 FFBox `src/renderer/src/types.ts`，仅保留移动端所需的核心类型。
 import { Task, Run, WorkingStatus, Notification, FFmpegInfo } from './common/types';
 import { ServiceBridge } from './bridges/serviceBridge';
+import type { SingleTaskScheduler } from './logic/transferManager';
 
 export interface UIRun extends Run {
 	dashboard: {
@@ -30,7 +31,7 @@ export interface UITask extends Omit<Task, 'runs'> {
 export interface UploadChunk {
 	file?: UploadFile;
 	abortController: AbortController;
-	buffer?: ArrayBuffer;
+	buffer?: Uint8Array<ArrayBuffer>;	// 分片原始字节。移动端用 expo-file-system FileHandle.readBytes 按 offset 读取；小文件缓存，大文件哈希后释放、上传前再读取
 	status: 'waiting' | 'reading' | 'hashing' | 'uploading' | 'paused' | 'finished' | 'error';
 	tryCount: number;
 	transferred: number;	// B
@@ -44,6 +45,9 @@ export interface UploadFile {
 	url?: string;	// 使用字符串输入
 	size?: number;	// B
 	status: 'waiting' | 'reading' | 'hashing' | 'uploading' | 'paused' | 'finished' | 'error';
+	readTask?: SingleTaskScheduler;		// 用于暂停
+	hashTask?: SingleTaskScheduler;
+	uploadTask?: SingleTaskScheduler;
 }
 export interface DownloadFile {
 	url: string;

@@ -11,9 +11,11 @@ import { colors } from '@/common/theme';
 interface Props {
 	/** 点击「⋯」更多按钮（由主界面打开操作菜单） */
 	onMorePress: () => void;
+	/** 点击汉堡菜单按钮（打开侧边抽屉） */
+	onDrawerOpen?: () => void;
 }
 
-export function HeaderBar({ onMorePress }: Props) {
+export function HeaderBar({ onMorePress, onDrawerOpen }: Props) {
 	const snap = useSnapshot(appStore);
 	const server = snap.currentServer;
 	const data = server?.data;
@@ -64,6 +66,11 @@ export function HeaderBar({ onMorePress }: Props) {
 	return (
 		<View style={styles.header}>
 			<View style={styles.left}>
+				{!!onDrawerOpen && (
+					<TouchableOpacity style={styles.btn} onPress={onDrawerOpen} hitSlop={{ top: 6, bottom: 6, right: 4 }}>
+						<Ionicons name="menu" size={24} color={colors.textMain} />
+					</TouchableOpacity>
+				)}
 				<Text style={styles.ip} numberOfLines={1}>
 					{server?.entity.ip || '未连接'}
 				</Text>

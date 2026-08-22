@@ -9,9 +9,11 @@ import { Notification, NotificationLevel, OutputParams, TaskStatus, WorkingStatu
 import { Server, UITask } from '../types';
 import { ServiceBridge, ServiceBridgeStatus } from '../bridges/serviceBridge';
 import { registerServerForDashboard } from '../common/dashboardCalc';
-import { randomString, getInitialUITask, mergeTaskFromService } from '../common/utils';
+import { randomString, getInitialUITask, mergeTaskFromService, getNewUIRun, replaceOutputParams } from '../common/utils';
 import { handleCmdUpdate, handleFFmpegInfo, handleProgressUpdate, handleTasklistUpdate, handleNotificationUpdate, handleTaskUpdate, handleStatusUpdate } from '../logic/eventsHandler';
 import { getLimitation } from '../common/limitations';
+import { addUploadTask } from '../logic/transferManager';
+import { getPresetList } from '../common/presetStorage';
 
 // #region store 状态与 actions（对齐 FFBox appStore 结构）
 
@@ -36,10 +38,11 @@ export const appStore = proxy({
 	selectedTask: undefined as Set<number> | undefined,	// 与 PC 端不同，移动端通过是否 undefined 判断现在是否在多选模式
 	isAllSelected: false,
 	taskSelectionModified: false,
-	// 移动端无全局参数概念，保留位置但注释
+	// 移动端无「全局参数」概念（defaultParams 仅在新建任务时使用），globalParams 保留位置但注释。
+	// 预设：步骤 4 起支持「选择预设应用到任务」，预设列表从本地存储读取；完整编辑在步骤 5 恢复。
 	// globalParams: JSON.parse(JSON.stringify(defaultParams)) as OutputParams,
 	// presetName: '',
-	// availablePresets: [] as string[],
+	availablePresets: [] as string[],
 	// downloadMap: new Map<string, string>(),
 	// latestVersion: undefined,
 	functionLevel: 20,
@@ -185,6 +188,32 @@ export const appStore = proxy({
 			server.entity.queuePause();
 		}
 	},
+	/**
+	 * 添加任务：先以占位名创建任务，再对每个文件启动后台上传。
+	 * 上传完成后由 transferManager 自动调用 mergeUploaded，任务进入可开始状态。
+	 * 随后页面跳转「选择预设」页应用输出参数（此函数仅负责创建任务 + 启动上传 + 标记选中）。
+	 */
+	async addTasks(files: { uri: string; name: string }[], params: OutputParams): Promise<number[]> {
+		const server = this.currentServer;
+		if (!server || !files.length) return [];
+		const entity = server.entity;
+		if (entity.status !== ServiceBridgeStatus.Connected) return [];
+		// 1. 需要上传 → 用占位名创建任务（移动端连接远程服务器一般无 FileSystem 权限，走上传路径）
+		const inputNames = files.map((f) => `[uploading] ${f.name}`);
+		const ids = await entity.taskAddBatch(inputNames, params);
+		// 2. 对每个文件启动上传（后台模块，不阻塞页面）
+		for (let i = 0; i < ids.length; i++) {
+			try {
+				const file = await addUploadTask(server, files[i].uri, ids[i], files[i].name, inputNames[i]);
+				server.data.uploadFiles.push(file);
+			} catch (e) {
+				console.warn(`[addTasks] 上传初始化失败：${files[i].name}`, e);
+			}
+		}
+		// 3. 选中新任务（供「选择预设」页确定应用目标）
+		this.selectedTask = new Set(ids);
+		return ids;
+	},
 	// 移动端无"全局参数"概念，以下参数处理相关 action 注释保留位置。
 	// 但注意：checkAndApplyCodecDefaults 与 fetchAVOptions 未来仍可能用到——
 	//   - fetchAVOptions：取出服务端 ffmpeg 的编码器/复用器/滤镜清单，用于组装参数编辑器表单项，后续步骤需恢复。
@@ -204,6 +233,52 @@ export const appStore = proxy({
 	// 	}
 	// },
 	// #endregion 任务处理
+
+	// #region 参数与预设处理（移动端精简版：仅「选择预设应用到任务」，完整参数编辑在步骤 5 恢复）
+	/**
+	 * 从本地存储读取预设名称列表并刷新 availablePresets
+	 */
+	async loadPresetList(): Promise<void> {
+		const presets = await getPresetList();
+		this.availablePresets = presets;
+	},
+	/**
+	 * 将指定预设参数应用到任务（参考 FFBox applyParameters 的「未运行改当前 run / 运行后建新 run」）。
+	 * 先本地替换 run.after 并推送 setParameters，paraArray 由 service 计算后经 taskUpdate 回填。
+	 */
+	async applyPresetToTasks(taskIds: number[], params: OutputParams): Promise<void> {
+		const server = this.currentServer;
+		if (!server || !taskIds.length) return;
+		const entity = server.entity;
+		const data = server.data;
+		// 本地更新缓冲区中的任务
+		const targetIds: number[] = [];
+		for (const taskId of taskIds) {
+			const taskIndex = data.taskIdToIndex.get(taskId);
+			if (taskIndex === undefined) continue;
+			const task = data.tasks[taskIndex];
+			const isRunning = [TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(task.status);
+			if (isRunning) continue;	// 运行中不允许修改参数
+			let latestRun = task.runs[task.runs.length - 1];
+			const hasFinished = [TaskStatus.finished, TaskStatus.error].includes(task.status);
+			if (hasFinished) {
+				// 运行完成后建新 run
+				const newRun = getNewUIRun(JSON.parse(JSON.stringify(latestRun.after)));
+				task.runs.push(newRun);
+				latestRun = newRun;
+				task.status = TaskStatus.idle;
+			}
+			// 全量替换输出参数（fullyReplace 保留任务特有的文件列表等结构由 replaceOutputParams 处理）
+			latestRun.after = replaceOutputParams(params, latestRun.after, true);
+			targetIds.push(taskId);
+		}
+		if (targetIds.length) {
+			entity.setParameters(targetIds, params, true);
+		}
+		this.taskSelectionModified = true;
+	},
+	// 完整预设编辑（savePreset / editPreset / deletePreset / fetchAVOptions / checkAndApplyCodecDefaults）在步骤 5 恢复。
+	// #endregion 参数与预设处理
 
 	// #region 通知处理
 	/**

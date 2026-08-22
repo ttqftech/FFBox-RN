@@ -20,8 +20,10 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(index)" />
-          <Stack.Screen name="main" />
+          <Stack.Screen name="(index)/index" />
+          <Stack.Screen name="main/index" />
+          <Stack.Screen name="upload/index" />
+          <Stack.Screen name="preset/index" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
