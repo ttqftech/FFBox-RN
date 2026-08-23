@@ -3,7 +3,7 @@
 // 背景进度条：绿/黄/灰/红（对齐 FFBox taskBackgroundProgressStyle）。
 // 左滑露出「选择预设」「暂停/重置/删除」两个操作按钮。
 // 多选模式：点任务 = 切换选中，不进入详情。
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { View, Text, Pressable, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { SvgProps } from 'react-native-svg';
@@ -57,6 +57,27 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 	const StatusIcon = getStatusIcon(runStatus);
 	const dashboardVisible = [TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(runStatus);
 	const outputDuration = getOutputDuration(task);
+
+	// 上传进度（对齐 FFBox TaskItem 的 uploadFiles/uploadStatus/transferInfo 计算）
+	// 任务处于 initializing 且存在该任务的上传文件时，用蓝色进度条显示上传进度，否则显示转码进度
+	const uploadFiles = (server?.data.uploadFiles ?? []).filter((uploadFile) => uploadFile.taskId === taskId);
+	const uploadStatus = uploadFiles.length > 0 && task.status === TaskStatus.initializing
+		? (uploadFiles.every((file) => file.status !== 'error') ? 'uploading' : 'error')
+		: 'fine';
+	const uploading = uploadStatus === 'uploading';
+	// console.log('uploadStatus', uploadStatus, task.status);
+	// 读取 / 校验 / 上传三个总量的累加
+	const transferInfo = useMemo(() => {
+		const totalSize = uploadFiles.reduce((prev, curr) => prev + (curr.size || Number.MAX_SAFE_INTEGER / 1024), 0);
+		const totalRead = uploadFiles.reduce((prev, curr) => prev + curr.chunks.reduce((p, c) => p + c.size, 0), 0);
+		const totalHash = uploadFiles.reduce((prev, curr) => prev + curr.chunks.reduce((p, c) => p + (c.hash ? c.size : 0), 0), 0);
+		const totalUpload = uploadFiles.reduce((prev, curr) => prev + curr.chunks.reduce((p, c) => p + (c.transferred ?? 0), 0), 0);
+		return { totalSize, totalRead, totalHash, totalUpload };
+	}, [uploadFiles]);
+	// 上传总进度（对齐 FFBox overallProgress 的 transfer 公式：读取/校验/上传 0.1/0.1/0.8）
+	const uploadProgress = transferInfo.totalSize ? (transferInfo.totalRead * 0.1 + transferInfo.totalHash * 0.1 + transferInfo.totalUpload * 0.8) / transferInfo.totalSize : 0;
+	// 最终进度条进度：上传时用上传进度，否则用转码进度
+	const progress = uploading ? uploadProgress : (dashboardData.progress ?? 0);
 
 	const formatSpeed = (value: number) => value >= 100 ? value.toFixed(0) + '×' : (value >= 10 ? value.toFixed(1) + '×' : value.toFixed(2) + '×');
 	const formatLeftTime = (totalDuration: number, dashboardTime: number, dashboardSpeed: number) => {
@@ -133,7 +154,7 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 		<ReanimatedSwipeable renderRightActions={renderRightActions} friction={1} rightThreshold={40} overshootRight={false} containerStyle={{ overflow: 'visible' }}>
 			<Pressable style={styles.taskWrapper} onPress={handlePress}>
 				<View style={[styles.task, isSelected && styles.taskSelected]}>
-					<TaskProgressBar status={runStatus} progress={dashboardData.progress ?? 0} />
+					<TaskProgressBar status={runStatus} progress={progress} />
 					<View style={styles.row1}>
 						<StatusIcon width={20} height={20} style={styles.statusIcon} />
 						<View style={styles.idOrIndex}>
@@ -142,12 +163,19 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 						<Text style={styles.name} numberOfLines={1}>
 							{task.taskName ?? '读取中'}
 						</Text>
-						{[TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(run.status) && (
-							<Text style={styles.pct}>{dashboardData.progress === 1 ? '🆗' : (dashboardData.progress * 100).toFixed(1)}%</Text>
+						{(uploading || [TaskStatus.running, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finishing].includes(run.status)) && (
+							<Text style={styles.pct}>{progress === 1 ? '🆗' : (progress * 100).toFixed(1)}%</Text>
 						)}
 					</View>
 					<View style={styles.row2}>
-						{dashboardVisible ? (
+						{uploading ? (
+							// 上传中：在 dashboardVisible 位置替换显示读取/校验/上传三个总量（对齐 FFBox transfer dashboard）
+							<View style={styles.row2LeftRight}>
+								<Text style={styles.metric}>{'读取 ' + formatSize(transferInfo.totalRead)}</Text>
+								<Text style={styles.metric}>{'校验 ' + formatSize(transferInfo.totalHash)}</Text>
+								<Text style={styles.metric}>{'上传 ' + formatSize(transferInfo.totalUpload)}</Text>
+							</View>
+						) : dashboardVisible ? (
 							<View style={styles.row2LeftRight}>
 								<Text style={styles.metric}>{dashboardVisible ? '输出 ' + formatSize(dashboardData.size) : ''}</Text>
 								<Text style={styles.metric}>{dashboardVisible ? `进度 ${formatTime(dashboardData.time, 'display')} / ${formatTime(outputDuration, 'compact')}` : ''}</Text>
@@ -158,14 +186,16 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 								<Text style={styles.metric}>{'输出时长 ' + formatTime(outputDuration, 'compact')}</Text>
 							</View>
 						)}
-						<Text style={[styles.metric, styles.metricLast]}>
-							{dashboardVisible
-								? '剩余 ' + formatLeftTime(outputDuration, dashboardData.time, dashboardData.speed)
-								: ['准备中', '就绪', '排队开始', '暂停', '排队继续', '正在停止', '已完成', '出错'][[
-									TaskStatus.initializing, TaskStatus.idle, TaskStatus.idle_queued, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finished, TaskStatus.error
-								].indexOf(run.status)]
-							}
-						</Text>
+						{!uploading && (
+							<Text style={[styles.metric, styles.metricLast]}>
+								{dashboardVisible
+									? '剩余 ' + formatLeftTime(outputDuration, dashboardData.time, dashboardData.speed)
+									: ['准备中', '就绪', '排队开始', '暂停', '排队继续', '正在停止', '已完成', '出错'][[
+										TaskStatus.initializing, TaskStatus.idle, TaskStatus.idle_queued, TaskStatus.paused, TaskStatus.paused_queued, TaskStatus.stopping, TaskStatus.finished, TaskStatus.error
+									].indexOf(run.status)]
+								}
+							</Text>
+						)}
 					</View>
 				</View>
 			</Pressable>

@@ -1,6 +1,7 @@
-// 「上传进度」页：显示当前选中任务对应的上传文件实时进度（读取/哈希/上传）。
-// 全部上传完成后自动跳转「选择预设」页；出错时提供手动继续入口。
-import { useCallback, useEffect, useMemo } from 'react';
+// 「上传进度」页：全局上传任务列表（读取/哈希/上传实时进度）。
+// 顶部 tab 切换：默认显示「全部任务」，可切换到「当前已选」任务的上传任务。
+// 本页不再自动跳转「选择预设」；上传流程为 主界面选文件 → 预设页 → 本页。
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,15 +12,10 @@ import { UploadFile } from '@/types';
 import { colors } from '@/common/theme';
 import { formatSize } from '@/common/formatUtils';
 
-// 上传状态 → 中文标签
-const STATUS_LABEL: Record<UploadFile['status'], string> = {
-	waiting: '等待中',
-	reading: '读取中',
-	hashing: '计算哈希',
-	uploading: '上传中',
-	paused: '已暂停',
-	finished: '已完成',
-	error: '出错',
+type Filter = 'all' | 'selected';
+const FILTER_LABEL: Record<Filter, string> = {
+	all: '全部任务',
+	selected: '当前已选',
 };
 
 export default function UploadScreen() {
@@ -28,28 +24,20 @@ export default function UploadScreen() {
 	const server = snap.currentServer;
 	const selected = snap.selectedTask;
 
-	// 只显示本次添加任务对应的上传文件（通过 selectedTask 关联）
+	// 上传进度 tab：默认「全部任务」
+	const [filter, setFilter] = useState<Filter>('all');
+
+	// 全部上传文件（valtio 快照转为可变类型供 FlatList 使用）
+	const allFilesArr = useMemo(() => (server?.data.uploadFiles ?? []) as UploadFile[], [server?.data.uploadFiles]);
+
 	const files = useMemo(() => {
-		return (server?.data.uploadFiles ?? []).filter((f) => selected?.has(f.taskId));
-	}, [server?.data.uploadFiles, selected]);
-
-	const allFinished = files.length > 0 && files.every((f) => f.status === 'finished');
-	const hasError = files.some((f) => f.status === 'error');
-
-	// 全部完成后自动进入「选择预设」页
-	useEffect(() => {
-		if (!allFinished) return;
-		const timer = setTimeout(() => {
-			router.replace('/preset');
-		}, 500);
-		return () => clearTimeout(timer);
-	}, [allFinished, router]);
-
-	const goPreset = useCallback(() => {
-		router.replace('/preset');
-	}, [router]);
+		return filter === 'all'
+			? allFilesArr
+			: (allFilesArr ?? []).filter((f) => selected?.has(f.taskId));
+	}, [filter, allFilesArr, selected]);
 
 	const goBack = useCallback(() => {
+		// 返回主界面并清除选中，避免停留在多选模式
 		appStore.selectedTask = undefined;
 		router.back();
 	}, [router]);
@@ -58,14 +46,13 @@ export default function UploadScreen() {
 		const read = item.chunks.reduce((prev, curr) => prev + curr.size, 0);
 		const hashed = item.chunks.reduce((prev, curr) => prev + (curr.hash ? curr.size : 0), 0);
 		const uploaded = item.chunks.reduce((prev, curr) => prev + (curr.transferred ?? 0), 0);
-		console.log(`上传进度 ${uploaded}`, item.chunks.map((c) => c.transferred));
-		const overallProgress = (read * 0.1 + hashed * 0.1 + uploaded * 0.8) / (item.size ?? 0);
+		// console.log(`上传进度 ${uploaded}`, item.chunks.map((c) => c.transferred));
+		const overallProgress = item.size ? (read * 0.1 + hashed * 0.1 + uploaded * 0.8) / item.size : 0;
 		return (
 			<View style={styles.item}>
 				<View style={styles.itemRow}>
 					<Ionicons name="document-outline" size={18} color={colors.textSub} />
 					<Text style={styles.itemName} numberOfLines={1}>{item.fileBaseName}</Text>
-					{/* <Text style={styles.itemStatus}>{STATUS_LABEL[item.status]}</Text> */}
 					<Text style={styles.itemStatus}>{item.status}</Text>
 				</View>
 				<View style={styles.progressTrack}>
@@ -93,41 +80,30 @@ export default function UploadScreen() {
 				<View style={styles.btn} />
 			</View>
 
+			{/* tab 切换：全部任务 / 当前已选 */}
+			<View style={styles.tabBar}>
+				{(Object.keys(FILTER_LABEL) as Filter[]).map((key) => (
+					<TouchableOpacity
+						key={key}
+						style={[styles.tab, filter === key && styles.tabActive]}
+						onPress={() => setFilter(key)}
+					>
+						<Text style={[styles.tabText, filter === key && styles.tabTextActive]}>{FILTER_LABEL[key]}</Text>
+					</TouchableOpacity>
+				))}
+			</View>
+
 			{files.length === 0 ? (
 				<View style={styles.center}>
 					<Text style={styles.emptyText}>暂无可显示的上传任务</Text>
-					<TouchableOpacity style={styles.primaryBtn} onPress={goPreset}>
-						<Text style={styles.primaryBtnText}>去选择预设</Text>
-					</TouchableOpacity>
 				</View>
 			) : (
 				<FlatList
 					style={styles.list}
-					data={files as unknown as UploadFile[]}
+					data={files}
 					keyExtractor={(item) => String(item.taskId)}
 					renderItem={renderItem}
 					contentContainerStyle={styles.listContent}
-					ListFooterComponent={
-						<View style={styles.footer}>
-							{allFinished ? (
-								<>
-									<Text style={styles.footerHint}>全部上传完成，正在前往选择预设…</Text>
-									<TouchableOpacity style={styles.primaryBtn} onPress={goPreset}>
-										<Text style={styles.primaryBtnText}>继续</Text>
-									</TouchableOpacity>
-								</>
-							) : hasError ? (
-								<>
-									<Text style={[styles.footerHint, { color: colors.red }]}>部分文件上传出错，可重试或继续</Text>
-									<TouchableOpacity style={styles.primaryBtn} onPress={goPreset}>
-										<Text style={styles.primaryBtnText}>继续到预设</Text>
-									</TouchableOpacity>
-								</>
-							) : (
-								<Text style={styles.footerHint}>上传完成后将自动进入「选择预设」页</Text>
-							)}
-						</View>
-					}
 				/>
 			)}
 		</SafeAreaView>
@@ -146,8 +122,22 @@ const styles = StyleSheet.create({
 	},
 	btn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
 	headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: colors.textMain, paddingHorizontal: 6 },
+	tabBar: {
+		flexDirection: 'row',
+		marginHorizontal: 12,
+		marginTop: 10,
+		marginBottom: 2,
+		backgroundColor: colors['bg97'],
+		borderRadius: 8,
+		padding: 3,
+		overflow: 'hidden',
+	},
+	tab: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 6 },
+	tabActive: { backgroundColor: colors.card },
+	tabText: { fontSize: 14, color: colors.textSub },
+	tabTextActive: { color: colors.textMain, fontWeight: '600' },
 	list: { flex: 1 },
-	listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 24 },
+	listContent: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 24 },
 	item: {
 		backgroundColor: colors.card,
 		borderRadius: 3,
@@ -178,16 +168,4 @@ const styles = StyleSheet.create({
 	},
 	center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 },
 	emptyText: { fontSize: 14, color: colors.textSub },
-	footer: { alignItems: 'center', paddingVertical: 12, gap: 12 },
-	footerHint: { fontSize: 13, color: colors.textSub },
-	primaryBtn: {
-		height: 44,
-		minWidth: 160,
-		borderRadius: 10,
-		backgroundColor: colors.primary,
-		alignItems: 'center',
-		justifyContent: 'center',
-		paddingHorizontal: 24,
-	},
-	primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

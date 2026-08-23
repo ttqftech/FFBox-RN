@@ -2,7 +2,7 @@
 // 集成 HeaderBar、TaskItem、MoreMenu、DisconnectPanel、SideDrawer。
 // 队列总进度已移至 HeaderBar 标题栏（FFBox - 100%），画面底部不再有进度 footer。
 // 步骤 4：画面底部的 drop_files.svg 变为「添加任务」入口，点击弹出文件来源菜单（相册/媒体 或 所有文件）。
-//   选文件 → appStore.addTasks（创建任务 + 后台上传）→ 跳转「上传进度」页。
+//   选文件 → appStore.addTasks（创建任务 + 后台上传）→ 跳转「选择预设」页 → 选中预设 → 「上传进度」页。
 import { useCallback, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Modal, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -82,7 +82,9 @@ export default function MainScreen() {
 		setPicking(true);
 		try {
 			const ids = await appStore.addTasks(files, defaultParams);
+			// 创建任务 + 启动上传完成后，先跳「选择预设」页；选中预设后才进入上传进度页
 			if (ids.length) router.push('/upload');
+			if (ids.length) router.push('/preset');
 		} catch (e: any) {
 			Alert.alert('添加失败', e?.message || '未知错误');
 		} finally {
@@ -106,7 +108,9 @@ export default function MainScreen() {
 		setPicking(true);
 		try {
 			const ids = await appStore.addTasks(files, defaultParams);
+			// 创建任务 + 启动上传完成后，先跳「选择预设」页；选中预设后才进入上传进度页
 			if (ids.length) router.push('/upload');
+			if (ids.length) router.push('/preset');
 		} catch (e: any) {
 			Alert.alert('添加失败', e?.message || '未知错误');
 		} finally {

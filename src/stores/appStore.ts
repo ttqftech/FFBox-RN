@@ -201,6 +201,11 @@ export const appStore = proxy({
 		// 1. 需要上传 → 用占位名创建任务（移动端连接远程服务器一般无 FileSystem 权限，走上传路径）
 		const inputNames = files.map((f) => `[uploading] ${f.name}`);
 		const ids = await entity.taskAddBatch(inputNames, params);
+		// 关键：新任务创建后立即订阅其更新。
+		// 否则随后 setUploadStatus(taskId, true) 触发的 taskUpdate(initializing)
+		// 会在 updateTaskList 异步 GET + replaceSubscription 生效前到达而被 handleTaskUpdate 丢弃，
+		// 导致任务停留在 idle、列表看不到上传进度。
+		if (ids.length) entity.subscribeTasks(ids);
 		// 2. 对每个文件启动上传（后台模块，不阻塞页面）
 		for (let i = 0; i < ids.length; i++) {
 			try {
@@ -211,6 +216,9 @@ export const appStore = proxy({
 			}
 		}
 		// 3. 选中新任务（供「选择预设」页确定应用目标）
+		// 注意：此处不要再额外调用 updateTaskList——上传启动后的 setTimeout(0) 里会 setUploadStatus(true)
+		// 把任务改为 initializing 并下发 taskUpdate；此处刷新 GET 会早于它在后端生效、返回 idle 覆盖掉 initializing，
+		// 造成「先 init 后马上 idle」。
 		this.selectedTask = new Set(ids);
 		return ids;
 	},

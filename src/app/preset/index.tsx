@@ -1,5 +1,5 @@
 // 「选择预设」页（步骤 4 简化版）。
-// 复用步骤 5 的预设列表（presetStorage），本步仅做「选中预设 → applyPresetToTasks → 返回任务列表」。
+// 复用步骤 5 的预设列表（presetStorage），本步仅做「选中预设 → applyPresetToTasks → 跳转上传进度页」。
 // 完整预设编辑（新建/重命名/删除、参数编辑器）在步骤 5 实现。
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, StyleSheet, Alert } from 'react-native';
@@ -26,7 +26,7 @@ export default function PresetScreen() {
 	const targetCount = snap.selectedTask?.size ?? 0;
 
 	const leave = useCallback(() => {
-		// 离开预设页时清除选中，避免主界面停留在多选模式
+		// 未选择预设直接返回：回到主界面并清除选中，避免停留在多选模式
 		appStore.selectedTask = undefined;
 		router.back();
 	}, [router]);
@@ -45,16 +45,14 @@ export default function PresetScreen() {
 		setApplying(true);
 		try {
 			await appStore.applyPresetToTasks(taskIds, params);
-			appStore.presetName = name;
 			appStore.pushMsg(`已应用预设「${name}」到 ${taskIds.length} 个任务`, 1 /* NotificationLevel.ok */);
-			leave();
 		} catch (e: any) {
 			console.warn('[PresetScreen] 应用预设失败', e);
 			Alert.alert('应用失败', e?.message || '未知错误');
 		} finally {
 			setApplying(false);
 		}
-	}, [snap.selectedTask, leave]);
+	}, [snap.selectedTask]);
 
 	return (
 		<SafeAreaView style={styles.safeArea}>
