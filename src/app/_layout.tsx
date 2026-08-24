@@ -24,6 +24,7 @@ export default function RootLayout() {
           <Stack.Screen name="main/index" />
           <Stack.Screen name="upload/index" />
           <Stack.Screen name="preset/index" />
+          <Stack.Screen name="preset-edit/index" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

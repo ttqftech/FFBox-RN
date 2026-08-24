@@ -149,6 +149,10 @@ export const SideDrawer = forwardRef<SideDrawerRef, SideDrawerProps>(function Si
 		router.push('/upload');
 		closeDrawer();
 	};
+	const handlePresetManage = () => {
+		router.push({ pathname: '/preset', params: { mode: 'manage' } });
+		closeDrawer();
+	};
 	const handleSelectedAction = (action: (ids: number[]) => void) => {
 		if (!server || !connected) return;
 		action([...snap.selectedTask!]);
@@ -206,6 +210,7 @@ export const SideDrawer = forwardRef<SideDrawerRef, SideDrawerProps>(function Si
 						{menuItem('refresh', actionIcon('refresh', false, !connected), '刷新当前服务器信息', handleRefresh, false, !connected)}
 						{menuItem('avoptions', actionIcon('code-slash-outline', false, !connected), '从当前服务器获取 AVOptions', handleFetchAVOptions, false, !connected)}
 						{menuItem('transfer', actionIcon('swap-vertical-outline', false, false), '传输中心', handleTransferCenter)}
+						{menuItem('preset', actionIcon('albums-outline', false, false), '预设管理', handlePresetManage)}
 						<View style={styles.divider} />
 						{menuItem('logout', actionIcon('log-out-outline', true, false), '退出登录', onLogout, true)}
 						{menuItem('terms', <IconTerm width={20} height={20} color={colors.primary} />, '使用条款', () => setShowTerms(true))}

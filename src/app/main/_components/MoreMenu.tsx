@@ -6,6 +6,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Pla
 import { useSnapshot } from 'valtio';
 import type { SvgProps } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { appStore } from '@/stores/appStore';
 import { TaskStatus } from '@/common/types';
 import { ServiceBridgeStatus } from '@/bridges/serviceBridge';
@@ -129,6 +130,10 @@ export function MoreMenu({ visible, onClose, onLogout }: Props) {
 		Alert.alert('传输中心', '传输中心功能将在后续版本提供');
 		onClose();
 	};
+	const handlePresetManage = () => {
+		router.push({ pathname: '/preset', params: { mode: 'manage' } });
+		onClose();
+	};
 
 	// #endregion
 
@@ -190,6 +195,7 @@ export function MoreMenu({ visible, onClose, onLogout }: Props) {
 									{menuItem('refresh', actionIcon('refresh', false, !connected), '刷新当前服务器信息', handleRefresh, false, !connected)}
 									{menuItem('avoptions', actionIcon('code-slash-outline', false, !connected), '从当前服务器获取 AVOptions', handleFetchAVOptions, false, !connected)}
 									{menuItem('transfer', actionIcon('swap-vertical-outline', false, false), '传输中心', handleTransferCenter)}
+									{menuItem('preset', actionIcon('albums-outline', false, false), '预设管理', handlePresetManage)}
 									<View style={styles.divider} />
 									{menuItem('logout', actionIcon('log-out-outline', true, false), '退出登录', onLogout, true)}
 									{menuItem('terms', <IconTerm width={20} height={20} color={colors.primary} />, '使用条款', () => setShowTerms(true))}

@@ -164,6 +164,12 @@ export default function MainScreen() {
 	
 			)}
 
+			{/* 预设管理入口（右下角悬浮按钮） */}
+			<Pressable style={styles.presetFab} onPress={() => router.push({ pathname: '/preset', params: { mode: 'manage' } })}>
+				<Ionicons name="albums-outline" size={22} color={colors.ff} />
+				<Text style={styles.presetFabText}>预设</Text>
+			</Pressable>
+
 			{/* 添加任务：文件来源菜单（相册/媒体 或 所有文件） */}
 			<Modal visible={pickSourceVisible} transparent animationType="slide" onRequestClose={() => setPickSourceVisible(false)}>
 				<Pressable style={styles.pickBackdrop} onPress={() => setPickSourceVisible(false)}>
@@ -205,6 +211,20 @@ function TouchableOpacityRow({ icon, label, sub, onPress }: { icon: keyof typeof
 
 const styles = StyleSheet.create({
 	safeArea: { flex: 1, backgroundColor: colors['bg92'] },
+	presetFab: {
+		position: 'absolute',
+		right: 16,
+		bottom: 24,
+		width: 56,
+		height: 56,
+		borderRadius: 28,
+		backgroundColor: colors.primary,
+		alignItems: 'center',
+		justifyContent: 'center',
+		boxShadow: '0 4px 10px 0 rgba(0,0,0,0.3)',
+		gap: 1,
+	},
+	presetFabText: { color: colors.ff, fontSize: 10, fontWeight: '600' },
 	taskArea: { flexGrow: 1, paddingTop: 20 },
 	dropFilesDiv: {
 		flex: 1,

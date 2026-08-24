@@ -4,8 +4,9 @@
 // 左滑露出「选择预设」「暂停/重置/删除」两个操作按钮。
 // 多选模式：点任务 = 切换选中，不进入详情。
 import { memo, useMemo } from 'react';
-import { View, Text, Pressable, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import type { SvgProps } from 'react-native-svg';
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSnapshot } from 'valtio';
@@ -45,6 +46,7 @@ function getStatusIcon(status: TaskStatus): React.FC<SvgProps> {
 }
 
 export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: Props) {
+	const router = useRouter();
 	const snap = useSnapshot(appStore);
 	const server = snap.currentServer;
 	const index = server?.data.taskIdToIndex.get(taskId);
@@ -101,8 +103,9 @@ export const TaskItem = memo(function TaskItem({ taskId, isSelected, onPress }: 
 	};
 
 	const handleChoosePreset = () => {
-		// 预设选择在步骤 5 实现，此处占位
-		Alert.alert('选择预设', '预设选择功能将在后续版本提供');
+		// 将当前任务设为选中，进入「选择预设」页（未运行改当前 run，运行后建新 run 由 applyPresetToTasks 处理）
+		appStore.selectedTask = new Set([taskId]);
+		router.push('/preset');
 	};
 
 	const handlePauseNremove = () => {
